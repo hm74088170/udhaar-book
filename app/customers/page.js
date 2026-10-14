@@ -1,51 +1,69 @@
 "use client";
-import { useState } from "react";
+import { getBalance } from "@/lib/balance";
+import { useLocalStorage } from "@/lib/useLocalStorage";
+import CustomerForm from "@/components/CustomerForm";
+import CustomerList from "@/components/CustomerList";
+
+const STORAGE_KEY = "udhaar-customers";
 
 export default function CustomersPage(){
-    const [customers, setCustomers] = useState([]);
-    const [name, setName] = useState("");
-    const [phone, setPhone] = useState("");
-    const [error, setError] =  useState("");
+    const [customers, setCustomers, loaded] = useLocalStorage(STORAGE_KEY, [])
 
-    function handleSubmit(e){
-        e.preventDefault();
-        if(name.trim().length <2) {
-            setError("Name must be at least 2 letters");
-            return;
+    function addCustomer(newCustomer) {
+        if (customers.some((c) => c.phone === newCustomer.phone)){
+            return "This phone number alrady exists";
         }
-        if (!/^[0-9]{10}$/.test(phone)){
-            setError("Phone must be exactly 10 digits");
-            return;
-        }
-        setCustomers([...customers, {id: Date.now(), name: name.trim(), phone}]);
-        setName("");
-        setPhone("");
-        setError("");
+        setCustomers([...customers, { id: Date.now(), ...newCustomer, transactions: [] }]);
+        return null;
     }
+    function deleteCustomer(id) {
+        setCustomers(customers.filter((c) => c.id !== id));
+    }
+
+    function addTransaction(customerId, entry){
+        setCustomers(
+            customers.map((c) => 
+            c.id === customerId
+            ? {...c, transactions: [...c.transactions, {id: Date.now(), date: new Date().toISOString(), ...entry },],}:c
+            )
+        );
+    }
+
+    function clearAll() {
+        if (window.confirm("Delete ALL customers and entries? This cannotbe undone.")) {
+            setCustomers([]);
+        }
+    }
+
+    const totalPending = customers.reduce((sum, c) => {
+        const balance = getBalance(c.transactions);
+        return balance > 0 ? sum + balance : sum;
+    }, 0)
+
+    if(!loaded) {
+        return <main className="p-6">Loading...</main>;
+    }
+   
 
     return (
         <main className="p-6 max-w-md mx-auto">
             <h1 className="text-2xl font-bold mb-4">Customers</h1>
-
-            <form onSubmit={handleSubmit} className="flex flex-col gap-2 mb-6">
-                <input className="border p-2 rounded" placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)}/>
-                <input className="border p-2 rounded" placeholder="Phone (10 digits)" value={phone} onChange={(e) => setPhone(e.target.value)}/>
-                {error && <p className="text-red-600 text-sm">{error}</p>}
-                <button className="bg-blue-600 text-white p-2 rounded">Add customer</button>
-            </form>
-
-            {customers.length === 0 ? (
-                <p className="text-gray-500">No customers yet. Add your first one.</p>
-            ) : (
-                <ul className="flex flex-col gap-2">
-                    {customers.map((c) => (
-                        <li key={c.id} className="border p-3 rounded">
-                            <p className="font-semibold">{c.name}</p>
-                            <p className="text-sm text-grey-600">{c.phone}</p>
-                        </li>
-                    ))}
-                </ul>
+            <p className="mb-4 text-gray-700">
+                Total pending credit:{" "}
+                <span className="font-bold text-red-600">
+                    ₹{totalPending.toLocaleString("en-IN")}
+                </span>
+            </p>
+            <CustomerForm onAdd={addCustomer}/>
+            <CustomerList customers={customers} onDelete={deleteCustomer} onAddTransaction={addTransaction}/>
+            {customers.length > 0 && (
+                <button
+                onClick={clearAll}
+                className="mt-8 text-sm text-red-600 underline"
+                >
+                    Clear all data
+                </button>
             )}
         </main>
-    )
+    );
 }
